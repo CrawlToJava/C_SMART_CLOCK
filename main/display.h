@@ -10,8 +10,8 @@
 #define DIGIT_3_GPIO 25
 #define DIGIT_4_GPIO 26
 
-#define DISPLAY_DELAY 5;
+#define DELAY_PERIOD 10
 
-void display_app(void);
+void display_app(int time);
 
 #endif

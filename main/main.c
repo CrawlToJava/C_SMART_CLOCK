@@ -2,5 +2,5 @@
 
 void app_main()
 {
-    display_app();
+    display_app(5555);
 }
