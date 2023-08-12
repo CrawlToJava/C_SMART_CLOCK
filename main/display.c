@@ -15,16 +15,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static char *TAG = "DISPLAY"; // Log tag
+static const char *TAG = "DISPLAY"; // Log tag
 
 static uint8_t digit_count = 1; // Increment value for isr_display_num_func logic
 
-static timer_config_params_t timer_config_params; // Timer config
+static timer_for_display_config_params_t timer_config_params; // Timer config
 
-uint8_t digitOne = 0;
-uint8_t digitTwo = 0;
-uint8_t digitThree = 0;
-uint8_t digitFour = 0;
+static uint8_t digitOne = 0;   // first digit value of seven segment display
+static uint8_t digitTwo = 0;   // second digit value of seven segment display
+static uint8_t digitThree = 0; // third digit value of seven segment display
+static uint8_t digitFour = 0;  // fourth digit value of seven segment display
 
 // Digits
 static const uint8_t digits_table[11] = {
@@ -51,6 +51,8 @@ static void shift_register_gpio_init(void)
         .pull_up_en = GPIO_PULLUP_DISABLE};
 
     ESP_ERROR_CHECK(gpio_config(&shift_register_gpio));
+
+    ESP_LOGI(TAG, "Shift register gpio`s initialized successfully");
 }
 
 // Seven segment digits gpio`s initialization
@@ -64,6 +66,8 @@ static void display_digit_gpio_init(void)
         .pull_up_en = GPIO_PULLUP_DISABLE};
 
     ESP_ERROR_CHECK(gpio_config(&display_digit_gpio));
+
+    ESP_LOGI(TAG, "Display gpio`s initialized successfully");
 }
 
 // Func send bit`s data to the shift register
@@ -123,7 +127,7 @@ static void selectDigit(uint8_t digit_index)
     gpio_set_level(DIGIT_1_GPIO, digit_index == 4 ? 0 : 1);
 }
 
-static bool IRAM_ATTR isr_display_num_func(void *arg)
+static bool IRAM_ATTR isr_display_digits_nums_func(void *arg)
 {
     uint32_t numToDisplay = *((uint32_t *)arg);
     int *digits = splitNumber(numToDisplay);
@@ -164,8 +168,7 @@ static bool IRAM_ATTR isr_display_num_func(void *arg)
     {
         digit_count = 1;
     }
-    // free(digits)
-    // free(arg);
+
     return high_task_awoken == pdTRUE;
 }
 
@@ -192,29 +195,21 @@ static void timer_init_for_display_num(uint8_t timer_group, uint8_t timer, bool 
        Also, if auto_reload is set, this value will be automatically reload on alarm */
     timer_set_counter_value(timer_group, timer, 0);
 
-    // uint32_t *numPtr = (uint32_t *)malloc(sizeof(uint32_t));
-    // if (!numPtr)
-    // {
-    //     ESP_LOGE(TAG, "Memory allocation failed");
-    //     return;
-    // }
-    // *numPtr = numToDisplay;
-
     /* Configure the alarm value and the interrupt on alarm. */
     timer_set_alarm_value(timer_group, timer, timer_interval_ms * TIMER_SCALE_MS);
     timer_enable_intr(timer_group, timer);
 
-    timer_isr_callback_add(timer_group, timer, isr_display_num_func, numToDisplay, 0);
+    timer_isr_callback_add(timer_group, timer, isr_display_digits_nums_func, numToDisplay, 0);
 
     timer_start(timer_group, timer);
 }
 
-void display_app(uint8_t timerGroup, uint8_t timerIndex, uint32_t *displayNum, uint32_t delayPeriod)
+void display_app(timer_for_display_config_params_t *pTimerConfig, uint32_t *displayNum, uint32_t delayPeriod)
 {
-    timer_config_params.timerGroup = timerGroup;
-    timer_config_params.timerIndex = timerIndex;
-    timer_config_params.autoReload = true;
+
     shift_register_gpio_init();
     display_digit_gpio_init();
-    timer_init_for_display_num(timer_config_params.timerGroup, timer_config_params.timerIndex, timer_config_params.autoReload, delayPeriod, displayNum);
+    timer_init_for_display_num(pTimerConfig->timerGroup, pTimerConfig->timerIndex, pTimerConfig->autoReload, delayPeriod, displayNum);
+
+    ESP_LOGI(TAG, "display_app has started");
 }
