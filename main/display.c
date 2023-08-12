@@ -168,7 +168,7 @@ static bool IRAM_ATTR isr_display_digits_nums_func(void *arg)
     {
         digit_count = 1;
     }
-
+    free(digits);
     return high_task_awoken == pdTRUE;
 }
 
