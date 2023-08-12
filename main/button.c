@@ -1,4 +1,6 @@
 #include "button.h"
+#include "task_common.h"
+
 #include "driver/gpio.h"
 
 #include "freertos/FreeRTOS.h"
@@ -8,11 +10,12 @@
 
 #include "esp_log.h"
 
-static bool button1_pressed = false;
-static bool button2_pressed = false;
+static bool button1_pressed = false; // Button gpio state
+static bool button2_pressed = false; // Button gpio state
 
 static const char *TAG = "Button";
 
+// Button gpio`s initialization
 static void button_gpio_init(void)
 {
     gpio_config_t button_gpio_config = {
@@ -23,8 +26,14 @@ static void button_gpio_init(void)
         .pull_down_en = GPIO_PULLDOWN_DISABLE};
 
     ESP_ERROR_CHECK(gpio_config(&button_gpio_config));
+
+    ESP_LOGI(TAG, "Button gpio`s initialized successfully");
 }
 
+/**
+ * Func read the state of button gpio`s once per 300 ms
+ * @param xTimer freertos timer
+ */
 static void button_handler(TimerHandle_t xTimer)
 {
     if (gpio_get_level(BUTTON_1_GPIO) == 0)
@@ -38,7 +47,11 @@ static void button_handler(TimerHandle_t xTimer)
     }
 }
 
-static void update_display_task(void *pvParameters)
+/**
+ * Func allow to change display`s num using buttons
+ * @param pvParameters pointer on display num
+ */
+static void update_display_num_task(void *pvParameters)
 {
     uint32_t *numToDisplay = (uint32_t *)pvParameters;
     while (1)
@@ -47,24 +60,30 @@ static void update_display_task(void *pvParameters)
         {
             button1_pressed = false;
             (*numToDisplay)++;
-            printf("update_display_task: button 16 is pressed, numToDisplay: %ld\n", *numToDisplay);
         }
 
         if (button2_pressed && numToDisplay > 0)
         {
             button2_pressed = false;
             (*numToDisplay)--;
-            printf("update_display_task: button 17 is pressed, numToDisplay: %ld\n", *numToDisplay);
         }
 
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }
 }
 
+/**
+ * Starts update display num task
+ * @param displayNum pointer to the display num
+ */
 void button_app(uint32_t *displayNum)
 {
     button_gpio_init();
-    xTaskCreate(update_display_task, "update_display_task", 2048, displayNum, 1, NULL);
+
+    xTaskCreatePinnedToCore(update_display_num_task, "update_display_num_task", BUTTON_APP_TASK_STACK_SIZE, displayNum, BUTTON_APP_TASK_PRIORITY, NULL, BUTTON_APP_TASK_CORE_ID);
+
     TimerHandle_t button_timer = xTimerCreate("button_timer", pdMS_TO_TICKS(DELAY_PERIOD), pdTRUE, NULL, button_handler);
     xTimerStart(button_timer, 0);
+
+    ESP_LOGI(TAG, "button_app has started");
 }

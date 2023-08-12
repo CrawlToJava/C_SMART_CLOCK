@@ -1,0 +1,9 @@
+#ifndef MAIN_TASK_COMMON_H
+#define MAIN_TASK_COMMON_H
+
+// Button task info
+#define BUTTON_APP_TASK_STACK_SIZE 2048
+#define BUTTON_APP_TASK_PRIORITY 5
+#define BUTTON_APP_TASK_CORE_ID 0
+
+#endif

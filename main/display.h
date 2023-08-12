@@ -19,7 +19,7 @@ typedef struct timer_config_params
     uint8_t timerGroup; // Timer group
     uint8_t timerIndex; // Timer index
     bool autoReload;    // allow/disallow autoreload
-} timer_config_params_t;
+} timer_for_display_config_params_t;
 
 // Shift register pin`s config structure
 typedef struct shift_register_config_gpio
@@ -41,6 +41,6 @@ typedef struct display_digit_config_gpio
 #define TIMER_DIVIDER (16)                                     //  Hardware timer clock divider
 #define TIMER_SCALE_MS ((APB_CLK_FREQ / TIMER_DIVIDER) / 1000) // convert counter value to milliseconds
 
-void display_app(uint8_t timerGroup, uint8_t timerIndex, uint32_t *displayNum, uint32_t delayPeriod);
+void display_app(timer_for_display_config_params_t *pTimerConfig, uint32_t *displayNum, uint32_t delayPeriod);
 
 #endif
