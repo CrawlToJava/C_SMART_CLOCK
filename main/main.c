@@ -6,7 +6,7 @@
 #include "driver/timer.h"
 #include "button.h"
 
-uint32_t num = 0;
+uint32_t num = 9999;
 timer_for_display_config_params_t timer_config = {
     .autoReload = true,
     .timerGroup = 0,
