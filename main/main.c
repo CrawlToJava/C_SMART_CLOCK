@@ -5,6 +5,7 @@
 #include "driver/gpio.h"
 #include "driver/timer.h"
 #include "button.h"
+#include "buzzer.h"
 
 uint32_t num = 9999;
 timer_for_display_config_params_t timer_config = {
@@ -16,4 +17,5 @@ void app_main()
 {
     button_app(&num);
     display_app(&timer_config, &num, 5);
+    play_music();
 }
