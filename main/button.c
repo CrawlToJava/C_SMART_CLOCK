@@ -1,13 +1,12 @@
 #include "button.h"
+#include "buzzer.h"
 #include "task_common.h"
 
 #include "driver/gpio.h"
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/timers.h"
-
 #include "esp_log.h"
+
+QueueHandle_t queue_music_handle = NULL;
 
 static ButtonState_e increase_num_button_pressed = BUTTON_NOT_PRESSED; // Button gpio state
 static ButtonState_e decrease_num_button_pressed = BUTTON_NOT_PRESSED; // Button gpio state
@@ -18,7 +17,11 @@ static TimerState_e is_timer_has_started = TIMER_NOT_STARTED; // Timer state
 
 static TimerHandle_t timer_start_xTimer = NULL;
 
+static TimerHandle_t button_timer = NULL;
+
 static const char *TAG = "Button";
+
+static bool is_music_play = false;
 
 /**
  * Func starts a timer
@@ -30,8 +33,13 @@ static void start_timer(TimerHandle_t xTimer)
     {
         ESP_LOGE(TAG, "Failed to start timer");
     }
-    else
+    else if (xTimer == button_timer)
     {
+        printf("Button Timer has started\n");
+    }
+    else if (xTimer == timer_start_xTimer)
+    {
+        is_timer_has_started = TIMER_STARTED;
         printf("Timer has started\n");
     }
 }
@@ -48,7 +56,9 @@ static void stop_timer(TimerHandle_t xTimer)
     }
     else
     {
+        MusicState_t musicState = {.musicState = MUSIC_START};
         is_timer_has_started = TIMER_NOT_STARTED;
+        xQueueSend(queue_music_handle, &musicState, portMAX_DELAY);
         printf("Timer has stoped\n");
     }
 }
@@ -111,15 +121,69 @@ static void button_handler(TimerHandle_t xTimer)
     }
 }
 
+static void music_status_control_task(void)
+{
+    MusicState_t musicState;
+    while (1)
+    {
+        if (xQueueReceive(queue_music_handle, &musicState.musicState, portMAX_DELAY))
+        {
+            switch (musicState.musicState)
+            {
+            case MUSIC_PLAY:
+                printf("MUSIC_PLAY case\n");
+                is_music_play = true;
+                break;
+            default:
+                break;
+            }
+        }
+    }
+    vTaskDelete(NULL);
+}
+
 /**
  * Func allow to change display`s num using buttons
  * @param pvParameters pointer on display num
  */
 static void update_display_num_task(void *pvParameters)
 {
+    MusicState_t musicState;
     uint32_t *numToDisplay = (uint32_t *)pvParameters;
     while (1)
     {
+        if (is_music_play && increase_num_button_pressed == BUTTON_PRESSED)
+        {
+            musicState.musicState = MUSIC_OFF;
+            increase_num_button_pressed = BUTTON_NOT_PRESSED;
+            xQueueSend(queue_music_handle, &musicState, portMAX_DELAY);
+            is_music_play = false;
+        }
+
+        if (is_music_play && decrease_num_button_pressed == BUTTON_PRESSED)
+        {
+            musicState.musicState = MUSIC_OFF;
+            decrease_num_button_pressed = BUTTON_NOT_PRESSED;
+            xQueueSend(queue_music_handle, &musicState, portMAX_DELAY);
+            is_music_play = false;
+        }
+
+        if (is_music_play && reset_timer_button_pressed == BUTTON_PRESSED)
+        {
+            musicState.musicState = MUSIC_OFF;
+            reset_timer_button_pressed = BUTTON_NOT_PRESSED;
+            xQueueSend(queue_music_handle, &musicState, portMAX_DELAY);
+            is_music_play = false;
+        }
+
+        if (is_music_play && start_timer_button_pressed == BUTTON_PRESSED)
+        {
+            musicState.musicState = MUSIC_OFF;
+            start_timer_button_pressed = BUTTON_NOT_PRESSED;
+            xQueueSend(queue_music_handle, &musicState, portMAX_DELAY);
+            is_music_play = false;
+        }
+
         if (increase_num_button_pressed == BUTTON_PRESSED && (*numToDisplay) < 9999 && is_timer_has_started == TIMER_NOT_STARTED)
         {
             increase_num_button_pressed = BUTTON_NOT_PRESSED;
@@ -132,22 +196,37 @@ static void update_display_num_task(void *pvParameters)
             (*numToDisplay)--;
         }
 
-        if (start_timer_button_pressed == BUTTON_PRESSED && (*numToDisplay) > 0)
+        if (start_timer_button_pressed == BUTTON_PRESSED)
         {
-            start_timer_button_pressed = BUTTON_NOT_PRESSED;
-            is_timer_has_started = TIMER_STARTED;
-            start_timer(timer_start_xTimer);
-            printf("Start timer button is pressed\n");
+            if ((*numToDisplay) > 0)
+            {
+                start_timer_button_pressed = BUTTON_NOT_PRESSED;
+                is_timer_has_started = TIMER_STARTED;
+                start_timer(timer_start_xTimer);
+                printf("Start timer button is pressed\n");
+            }
+            else
+            {
+                start_timer_button_pressed = BUTTON_NOT_PRESSED;
+            }
         }
 
         if (reset_timer_button_pressed == BUTTON_PRESSED)
         {
-            reset_timer_button_pressed = BUTTON_NOT_PRESSED;
-            printf("Reset timer button is pressed\n");
-            (*numToDisplay) = 0;
-            if (is_timer_has_started == TIMER_STARTED)
+            if ((*numToDisplay) >= 1)
             {
-                is_timer_has_started = TIMER_NOT_STARTED;
+
+                printf("Reset timer button is pressed\n");
+                reset_timer_button_pressed = BUTTON_NOT_PRESSED;
+                (*numToDisplay) = 0;
+                if (is_timer_has_started == TIMER_STARTED)
+                {
+                    is_timer_has_started = TIMER_NOT_STARTED;
+                }
+            }
+            else
+            {
+                reset_timer_button_pressed = BUTTON_NOT_PRESSED;
             }
         }
         vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -160,11 +239,14 @@ static void update_display_num_task(void *pvParameters)
  */
 void button_app(uint32_t *displayNum)
 {
+    queue_music_handle = xQueueCreate(sizeof(MusicState_t), 5);
+
     button_gpio_init();
 
     xTaskCreatePinnedToCore(update_display_num_task, "update_display_num_task", BUTTON_APP_TASK_STACK_SIZE, displayNum, BUTTON_APP_TASK_PRIORITY, NULL, BUTTON_APP_TASK_CORE_ID);
+    xTaskCreatePinnedToCore(music_status_control_task, "button_stop_music", BUTTON_STOP_MUSIC_TASK_STACK_SIZE, NULL, BUTTON_STOP_MUSIC_TASK_PRIORITY, NULL, BUTTON_STOP_MUSIC_TASK_CORE_ID);
 
-    TimerHandle_t button_timer = xTimerCreate("button_timer", pdMS_TO_TICKS(BUTTON_CHECK_STATE_DELAY_PERIOD), pdTRUE, NULL, button_handler);
+    button_timer = xTimerCreate("button_timer", pdMS_TO_TICKS(BUTTON_CHECK_STATE_DELAY_PERIOD), pdTRUE, NULL, button_handler);
     timer_start_xTimer = xTimerCreate("Timer xTimer", pdMS_TO_TICKS(START_TIMER_DELAY_PERIOD), pdTRUE, displayNum, start_timer_handler);
     start_timer(button_timer);
     ESP_LOGI(TAG, "button_app has started");

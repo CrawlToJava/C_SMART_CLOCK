@@ -111,9 +111,23 @@ typedef struct
     uint8_t duty_resolution;
 } ledc_info_t;
 
+typedef enum
+{
+    MUSIC_START,
+    MUSIC_OFF,
+    MUSIC_PLAY
+} MusicState_e;
+
+typedef struct
+{
+    MusicState_e musicState;
+} MusicState_t;
+
+void stop_music(void);
+
 /**
  * Starts to play music
  */
-void play_music(void);
+void buzzer_app(void);
 
 #endif
