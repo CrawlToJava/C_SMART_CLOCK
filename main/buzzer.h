@@ -111,6 +111,7 @@ typedef struct
     uint8_t duty_resolution;
 } ledc_info_t;
 
+// Music states enum
 typedef enum
 {
     MUSIC_START,
@@ -118,6 +119,7 @@ typedef enum
     MUSIC_PLAY
 } MusicState_e;
 
+// Music state struct
 typedef struct
 {
     MusicState_e musicState;
@@ -126,7 +128,7 @@ typedef struct
 void stop_music(void);
 
 /**
- * Starts to play music
+ * Starts buzzer app
  */
 void buzzer_app(void);
 
