@@ -2,11 +2,17 @@
 #define MAIN_BUTTON_H
 
 #include <stdint.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/timers.h"
+#include "freertos/queue.h"
 
 #define INCREASE_NUM_BUTTON_GPIO 17 // GPIO to control a button that increase timer value
 #define DECREASE_NUM_BUTTON_GPIO 16 // GPIO to control a button that decrease timer value
 #define START_TIMER_BUTTON_GPIO 23  // GPIO to control a button that start a timer
 #define RESET_TIMER_BUTTON_GPIO 22  // GPIO to control a button that  reset a timer
+
+extern QueueHandle_t queue_music_handle;
 
 /**
  * Pin mask for the button gpio`s

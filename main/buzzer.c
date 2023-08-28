@@ -1,16 +1,33 @@
-#include "buzzer.h"
 #include "driver/ledc.h"
 #include "driver/timer.h"
 
 #include <stdbool.h>
 
+#include "button.h"
+#include "task_common.h"
+#include "buzzer.h"
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
+#include "freertos/timers.h"
+
+#include "esp_log.h"
+
+static const char *TAG = "BUZZER";
 
 static ledc_info_t ledc_ch[BUZZER_LED_CHANNEL_NUM];
 
+static TimerHandle_t music_notes_timer = NULL;
+
 // handle for rgb_led_pwm_init
 bool g_pwm_init_handle = false;
+
+bool is_timer_paused = false;
+
+bool is_music_start = false;
+
+static uint8_t note_order = 1;
 
 // Music`s notes frq
 static const uint16_t buzzer_led_notes_frq[] = {
@@ -120,6 +137,39 @@ static const uint8_t buzzer_led_duty_duration[] = {
     4, 8, 4, 4, 8, 4,
     8, 8, 8, 8, 8, 2};
 
+#define FIRST_TIMER_DELAY (1000 / buzzer_led_duty_duration[0]) * 1.30
+
+#define NUM_OF_REPEAT_TIMER_FUNC sizeof(buzzer_led_duty_duration) / sizeof(uint8_t)
+
+/**
+ * Func stops a timer
+ *@param xTimer timer to stop
+ */
+static void stop_timer(TimerHandle_t xTimer)
+{
+    if (xTimerStop(xTimer, portMAX_DELAY) != pdPASS)
+    {
+        ESP_LOGE(TAG, "Failed to stop timer");
+    }
+    printf("Timer has stoped\n");
+}
+
+/**
+ * Func starts a timer
+ *@param xTimer timer to start
+ */
+static void start_timer(TimerHandle_t xTimer)
+{
+    if (xTimerStart(xTimer, portMAX_DELAY) != pdPASS)
+    {
+        ESP_LOGE(TAG, "Failed to start timer");
+    }
+    else if (xTimer == music_notes_timer)
+    {
+        printf("Music notes timer has started\n");
+    }
+}
+
 // PWM initialization
 static void buzzer_led_pwm_init(void)
 {
@@ -168,22 +218,75 @@ static void update_channel_params(uint16_t buzzer_led_note_frq, uint16_t buzzer_
     }
 }
 
-void play_music(void)
+void stop_music(void)
 {
-    while (true)
+    if (g_pwm_init_handle && !is_timer_paused)
     {
-        uint8_t size = sizeof(buzzer_led_duty_duration) / sizeof(uint8_t);
-        if (g_pwm_init_handle != true)
-        {
-            buzzer_led_pwm_init();
-        }
+        ledc_timer_pause(ledc_ch[0].mode, ledc_ch[0].timer_index);
+    }
+}
 
-        for (int note = 0; note < size; note++)
+static void play_music(TimerHandle_t xTimer)
+{
+    if (is_timer_paused)
+    {
+        ledc_timer_resume(ledc_ch[0].mode, ledc_ch[0].timer_index);
+        is_timer_paused = false;
+    }
+    uint8_t *note_order = (uint8_t *)pvTimerGetTimerID(xTimer);
+    MusicState_t musicState;
+    if ((*note_order) < NUM_OF_REPEAT_TIMER_FUNC)
+    {
+        uint32_t duration = 1000 / buzzer_led_duty_duration[(*note_order)];
+        uint32_t pauseBetweenNotes = duration * 1.30;
+        update_channel_params(buzzer_led_notes_frq[(*note_order)], buzzer_led_duty_duration[(*note_order)]);
+        xTimerChangePeriod(music_notes_timer, pdMS_TO_TICKS(pauseBetweenNotes), portMAX_DELAY);
+        (*note_order)++;
+    }
+    else
+    {
+        musicState.musicState = MUSIC_OFF;
+        xQueueSend(queue_music_handle, &musicState, portMAX_DELAY);
+    }
+}
+
+static void control_music_task(void)
+{
+    MusicState_t musicState;
+    uint8_t *note_order_p = &note_order;
+    while (1)
+    {
+        if (xQueueReceive(queue_music_handle, &musicState.musicState, portMAX_DELAY))
         {
-            uint32_t duration = 1000 / buzzer_led_duty_duration[note];
-            update_channel_params(buzzer_led_notes_frq[note], duration);
-            uint32_t pauseBetweenNotes = duration * 1.30;
-            vTaskDelay(pdMS_TO_TICKS(pauseBetweenNotes));
+            switch (musicState.musicState)
+            {
+            case MUSIC_START:
+                printf("MUSIC_START case\n");
+                musicState.musicState = MUSIC_PLAY;
+                xQueueSend(queue_music_handle, &musicState, portMAX_DELAY);
+                start_timer(music_notes_timer);
+                break;
+            case MUSIC_OFF:
+                printf("MUSIC_OFF case\n");
+                stop_music();
+                stop_timer(music_notes_timer);
+                is_timer_paused = true;
+                (*note_order_p) = 1;
+            default:
+                break;
+            }
         }
     }
+    vTaskDelete(NULL);
+}
+
+void buzzer_app(void)
+{
+    if (g_pwm_init_handle != true)
+    {
+        buzzer_led_pwm_init();
+    }
+    xTaskCreatePinnedToCore(control_music_task, "control_music_task", BUZZER_APP_TASK_STACK_SIZE, NULL, BUZZER_APP_TASK_PRIORITY, NULL, BUZZER_APP_TASK_CORE_ID);
+    music_notes_timer = xTimerCreate("Music notes timer", pdMS_TO_TICKS(FIRST_TIMER_DELAY), pdTRUE, &note_order, play_music);
+    ESP_LOGI(TAG, "buzzer app has started");
 }
