@@ -12,7 +12,7 @@
 #define START_TIMER_BUTTON_GPIO 23  // GPIO to control a button that start a timer
 #define RESET_TIMER_BUTTON_GPIO 22  // GPIO to control a button that  reset a timer
 
-extern QueueHandle_t queue_music_handle;
+extern QueueHandle_t queue_music_handle; // The queue for music states control
 
 /**
  * Pin mask for the button gpio`s
@@ -25,18 +25,27 @@ extern QueueHandle_t queue_music_handle;
 #define BUTTON_CHECK_STATE_DELAY_PERIOD 100 // Timer period for checking button gpio`s status
 #define START_TIMER_DELAY_PERIOD 1000
 
+/**
+ * Button states enum
+ */
 typedef enum
 {
     BUTTON_NOT_PRESSED,
     BUTTON_PRESSED
 } ButtonState_e;
 
+/**
+ * Timer states enum
+ */
 typedef enum
 {
     TIMER_STARTED,
     TIMER_NOT_STARTED
 } TimerState_e;
 
+/**
+ * Starts button app
+ */
 void button_app(uint32_t *displayNum);
 
 #endif

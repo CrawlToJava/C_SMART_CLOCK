@@ -18,16 +18,15 @@ static const char *TAG = "BUZZER";
 
 static ledc_info_t ledc_ch[BUZZER_LED_CHANNEL_NUM];
 
-static TimerHandle_t music_notes_timer = NULL;
+static TimerHandle_t pause_between_notes_timer = NULL; // Timer implements pauses between notes
 
-// handle for rgb_led_pwm_init
-bool g_pwm_init_handle = false;
+bool g_pwm_init_handle = false; // handle for rgb_led_pwm_init
 
-bool is_timer_paused = false;
+bool is_timer_paused = false; // Bool value that stores statement about timer status
 
-bool is_music_start = false;
+bool is_music_start = false; // Bool value that stores statement about music starting
 
-static uint8_t note_order = 1;
+static uint8_t note_order = 1; // value to control note order during music playing
 
 // Music`s notes frq
 static const uint16_t buzzer_led_notes_frq[] = {
@@ -137,9 +136,9 @@ static const uint8_t buzzer_led_duty_duration[] = {
     4, 8, 4, 4, 8, 4,
     8, 8, 8, 8, 8, 2};
 
-#define FIRST_TIMER_DELAY (1000 / buzzer_led_duty_duration[0]) * 1.30
+#define FIRST_TIMER_DELAY (1000 / buzzer_led_duty_duration[0]) * 1.30 // First pause between notes
 
-#define NUM_OF_REPEAT_TIMER_FUNC sizeof(buzzer_led_duty_duration) / sizeof(uint8_t)
+#define NUM_OF_REPEAT_TIMER_FUNC sizeof(buzzer_led_duty_duration) / sizeof(uint8_t) // Number of calling update_channel_params func
 
 /**
  * Func stops a timer
@@ -164,7 +163,7 @@ static void start_timer(TimerHandle_t xTimer)
     {
         ESP_LOGE(TAG, "Failed to start timer");
     }
-    else if (xTimer == music_notes_timer)
+    else if (xTimer == pause_between_notes_timer)
     {
         printf("Music notes timer has started\n");
     }
@@ -207,7 +206,9 @@ static void buzzer_led_pwm_init(void)
     g_pwm_init_handle = true;
 }
 
-// Changes the frq and duty duration params
+/**
+ * Changes the frq and duty duration params
+ */
 static void update_channel_params(uint16_t buzzer_led_note_frq, uint16_t buzzer_led_duty_duration)
 {
     for (int i = 0; i < BUZZER_LED_CHANNEL_NUM; i++)
@@ -218,6 +219,9 @@ static void update_channel_params(uint16_t buzzer_led_note_frq, uint16_t buzzer_
     }
 }
 
+/**
+ * Func stops the timer that generates pwm-signals, and music stops to play
+ */
 void stop_music(void)
 {
     if (g_pwm_init_handle && !is_timer_paused)
@@ -226,6 +230,9 @@ void stop_music(void)
     }
 }
 
+/**
+ * Func genereting pwm-signals and playing music on the buzzer
+ */
 static void play_music(TimerHandle_t xTimer)
 {
     if (is_timer_paused)
@@ -240,7 +247,7 @@ static void play_music(TimerHandle_t xTimer)
         uint32_t duration = 1000 / buzzer_led_duty_duration[(*note_order)];
         uint32_t pauseBetweenNotes = duration * 1.30;
         update_channel_params(buzzer_led_notes_frq[(*note_order)], buzzer_led_duty_duration[(*note_order)]);
-        xTimerChangePeriod(music_notes_timer, pdMS_TO_TICKS(pauseBetweenNotes), portMAX_DELAY);
+        xTimerChangePeriod(pause_between_notes_timer, pdMS_TO_TICKS(pauseBetweenNotes), portMAX_DELAY);
         (*note_order)++;
     }
     else
@@ -250,6 +257,9 @@ static void play_music(TimerHandle_t xTimer)
     }
 }
 
+/**
+ * Task controls music states with queue
+ */
 static void control_music_task(void)
 {
     MusicState_t musicState;
@@ -264,12 +274,12 @@ static void control_music_task(void)
                 printf("MUSIC_START case\n");
                 musicState.musicState = MUSIC_PLAY;
                 xQueueSend(queue_music_handle, &musicState, portMAX_DELAY);
-                start_timer(music_notes_timer);
+                start_timer(pause_between_notes_timer);
                 break;
             case MUSIC_OFF:
                 printf("MUSIC_OFF case\n");
                 stop_music();
-                stop_timer(music_notes_timer);
+                stop_timer(pause_between_notes_timer);
                 is_timer_paused = true;
                 (*note_order_p) = 1;
             default:
@@ -287,6 +297,6 @@ void buzzer_app(void)
         buzzer_led_pwm_init();
     }
     xTaskCreatePinnedToCore(control_music_task, "control_music_task", BUZZER_APP_TASK_STACK_SIZE, NULL, BUZZER_APP_TASK_PRIORITY, NULL, BUZZER_APP_TASK_CORE_ID);
-    music_notes_timer = xTimerCreate("Music notes timer", pdMS_TO_TICKS(FIRST_TIMER_DELAY), pdTRUE, &note_order, play_music);
+    pause_between_notes_timer = xTimerCreate("Music notes timer", pdMS_TO_TICKS(FIRST_TIMER_DELAY), pdTRUE, &note_order, play_music);
     ESP_LOGI(TAG, "buzzer app has started");
 }
